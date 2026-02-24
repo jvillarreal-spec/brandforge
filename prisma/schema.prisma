@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Account {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  hashedPassword String   @map("hashed_password")
+  companyName    String   @map("company_name")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  brandProfile BrandProfile?
+  brandAssets  BrandAsset[]
+  designPieces DesignPiece[]
+
+  @@map("accounts")
+}
+
+model BrandProfile {
+  id         String   @id @default(uuid())
+  accountId  String   @unique @map("account_id")
+  name       String
+  colors     Json     @default("{}")
+  typography Json     @default("{}")
+  style      Json     @default("{}")
+  logos      Json     @default("[]")
+  status     String   @default("draft")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("brand_profiles")
+}
+
+model BrandAsset {
+  id          String   @id @default(uuid())
+  accountId   String   @map("account_id")
+  filename    String
+  s3Key       String   @map("s3_key")
+  contentType String   @map("content_type")
+  fileSize    Int      @map("file_size")
+  assetType   String   @map("asset_type")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("brand_assets")
+}
+
+model DesignPiece {
+  id             String   @id @default(uuid())
+  accountId      String   @map("account_id")
+  pieceType      String   @map("piece_type")
+  variationStyle String?  @map("variation_style")
+  designSpec     Json     @map("design_spec")
+  thumbnailUrl   String?  @map("thumbnail_url")
+  name           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  account     Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  editHistory EditHistory[]
+  exports     Export[]
+
+  @@map("design_pieces")
+}
+
+model EditHistory {
+  id               String   @id @default(uuid())
+  designPieceId    String   @map("design_piece_id")
+  userMessage      String   @map("user_message")
+  aiExplanation    String   @map("ai_explanation")
+  designSpecBefore Json     @map("design_spec_before")
+  designSpecAfter  Json     @map("design_spec_after")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  designPiece DesignPiece @relation(fields: [designPieceId], references: [id], onDelete: Cascade)
+
+  @@map("edit_history")
+}
+
+model Export {
+  id            String    @id @default(uuid())
+  designPieceId String    @map("design_piece_id")
+  format        String
+  status        String    @default("processing")
+  s3Key         String?   @map("s3_key")
+  fileSize      Int?      @map("file_size")
+  errorMessage  String?   @map("error_message")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  completedAt   DateTime? @map("completed_at")
+
+  designPiece DesignPiece @relation(fields: [designPieceId], references: [id], onDelete: Cascade)
+
+  @@map("exports")
+}
