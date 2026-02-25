@@ -179,8 +179,11 @@ export function buildTemplateGenerationUserPrompt(
   height: number,
   variationStyle: string,
   contentTheme: string,
-  elementCountHint: string
+  elementCountHint: string,
+  variationDescription?: string
 ): string {
+  const styleDesc = variationDescription || VARIATION_STYLE_DESCRIPTIONS[variationStyle] || "";
+
   return `Generate a ${pieceType} design piece with the following context:
 
 ## Brand Profile:
@@ -192,9 +195,19 @@ ${brandProfileJson}
 - Variation style: ${variationStyle}
 - Content theme: ${contentTheme}
 
-Generate a complete, visually appealing Design Spec as a JSON object.
-Include ${elementCountHint} to make it a rich but not cluttered design.
-Respond with ONLY the JSON object.`;
+## CRITICAL STYLE INSTRUCTIONS — YOU MUST FOLLOW THESE EXACTLY:
+${styleDesc}
+
+## Important Requirements:
+- Generate ${elementCountHint} for a rich but not cluttered design
+- Each element MUST have a unique "id" starting with "el_001", "el_002", etc.
+- ALL colors must be valid HEX format (#RRGGBB)
+- ALL fonts must be from the allowed Google Fonts list
+- Position and size values must be positive numbers within the canvas bounds
+- The design MUST look distinctly different from other variation styles
+- Use the brand colors creatively — don't just use the primary color everywhere
+
+Respond with ONLY the JSON object. No markdown, no explanations.`;
 }
 
 // === Design Editing Prompts ===
@@ -256,6 +269,55 @@ export const VARIATION_STYLES = [
   "informative_and_structured",
   "creative_and_dynamic",
 ];
+
+export const VARIATION_STYLE_DESCRIPTIONS: Record<string, string> = {
+  bold_and_impactful: `BOLD & IMPACTFUL STYLE:
+- Use a FULL-BLEED background with the brand's PRIMARY color or a strong gradient (linear, dramatic angle like 135 degrees)
+- ONE massive headline text (80-120px font size) placed prominently
+- Very high contrast: white or light text on dark/colored backgrounds
+- Use LARGE geometric shapes as decorative elements (circles, diagonal rectangles)
+- Minimal number of elements but each one is BIG and commanding
+- Text should be UPPERCASE with bold weight
+- Include a thick accent bar or stripe using the accent color
+- Background should be the primary or secondary brand color, NOT white/neutral
+- Think: bold magazine cover, motivational poster`,
+
+  clean_and_minimal: `CLEAN & MINIMAL STYLE:
+- Use a WHITE or very light neutral background (#FFFFFF or brand neutral color)
+- Generous whitespace — elements should use only 40-50% of the canvas area
+- Thin, elegant typography with lighter font weights (light or normal)
+- Small, subtle decorative elements (thin lines, small circles as accents)
+- Text should be lowercase or sentence case, NEVER uppercase
+- Use only 2-3 colors maximum (primary + one neutral)
+- Centered composition with lots of breathing room
+- Thin border or subtle frame around the edge
+- Small accent elements placed asymmetrically
+- Think: luxury brand, Apple-style minimalism`,
+
+  informative_and_structured: `INFORMATIVE & STRUCTURED STYLE:
+- Use a SECTIONED layout with clear visual divisions (top header, middle content, bottom footer)
+- Multiple text blocks organized in a grid-like structure
+- Include a colored header bar at the top (40% of height) with the brand primary color
+- Below the header: organized content with bullet points or numbered items
+- Use horizontal divider lines between sections
+- Include small icon-like decorative shapes (circles, small rectangles) as bullet markers
+- Footer area with brand name and a CTA-style shape (rounded rectangle button)
+- Multiple font sizes creating clear hierarchy (headline > subheading > body > caption)
+- Background should be white/neutral with colored accent sections
+- Think: professional infographic, newsletter layout`,
+
+  creative_and_dynamic: `CREATIVE & DYNAMIC STYLE:
+- Use a GRADIENT background (radial or multi-stop linear with brand colors)
+- ROTATED elements — at least 2-3 shapes with rotation (15-45 degrees)
+- OVERLAPPING elements creating depth (shapes behind text, layered composition)
+- Mix of geometric shapes: triangles, circles, AND rectangles together
+- Asymmetric layout — nothing centered, elements placed at dynamic angles
+- Use semi-transparent shapes (opacity 0.3-0.7) for layering effects
+- Varied text sizes with at least one text element slightly rotated
+- Include diagonal stripe or triangle elements cutting across the canvas
+- Bold color combinations — use ALL brand colors (primary, secondary, accent)
+- Think: modern festival poster, creative agency portfolio`,
+};
 
 export const PIECE_TYPE_CONFIGS: Record<
   string,
