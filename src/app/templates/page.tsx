@@ -158,7 +158,7 @@ export default function TemplatesPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {templates.map((t) => (
             <Card key={t.id} className="overflow-hidden">
-              {t.design_spec ? (
+              {t.design_spec && typeof t.design_spec === "object" && t.design_spec.canvas ? (
                 <TemplatePreview
                   designSpec={t.design_spec}
                   className="aspect-square"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as fabric from "fabric";
 import type { DesignSpec } from "@/lib/design-spec.types";
 
@@ -12,66 +12,99 @@ interface TemplatePreviewProps {
 export function TemplatePreview({ designSpec, className }: TemplatePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     if (!canvasRef.current || !designSpec?.canvas) return;
 
     // Clean up previous canvas
-    if (fabricRef.current) {
-      fabricRef.current.dispose();
-      fabricRef.current = null;
-    }
-
-    const spec = designSpec;
-    const canvasWidth = spec.canvas.width || 1080;
-    const canvasHeight = spec.canvas.height || 1080;
-
-    // Create canvas at small size for thumbnail
-    const previewSize = 320;
-    const scale = previewSize / Math.max(canvasWidth, canvasHeight);
-    const displayWidth = Math.round(canvasWidth * scale);
-    const displayHeight = Math.round(canvasHeight * scale);
-
-    canvasRef.current.width = displayWidth;
-    canvasRef.current.height = displayHeight;
-
-    const canvas = new fabric.Canvas(canvasRef.current, {
-      width: displayWidth,
-      height: displayHeight,
-      selection: false,
-      renderOnAddRemove: false,
-    });
-    fabricRef.current = canvas;
-
-    // Set background
-    applyBackground(canvas, spec.canvas.background, displayWidth, displayHeight);
-
-    // Render elements in order (z-index by array position)
-    if (Array.isArray(spec.elements)) {
-      for (const el of spec.elements) {
-        try {
-          renderElement(canvas, el, scale);
-        } catch {
-          // Skip elements that fail to render
-        }
-      }
-    }
-
-    canvas.renderAll();
-
-    return () => {
+    try {
       if (fabricRef.current) {
         fabricRef.current.dispose();
         fabricRef.current = null;
       }
+    } catch {
+      fabricRef.current = null;
+    }
+
+    try {
+      const spec = designSpec;
+      const canvasWidth = spec.canvas.width || 1080;
+      const canvasHeight = spec.canvas.height || 1080;
+
+      // Create canvas at small size for thumbnail
+      const previewSize = 320;
+      const scale = previewSize / Math.max(canvasWidth, canvasHeight);
+      const displayWidth = Math.round(canvasWidth * scale);
+      const displayHeight = Math.round(canvasHeight * scale);
+
+      canvasRef.current.width = displayWidth;
+      canvasRef.current.height = displayHeight;
+
+      const canvas = new fabric.Canvas(canvasRef.current, {
+        width: displayWidth,
+        height: displayHeight,
+        selection: false,
+        renderOnAddRemove: false,
+      });
+      fabricRef.current = canvas;
+
+      // Set background
+      applyBackground(canvas, spec.canvas.background, displayWidth, displayHeight);
+
+      // Render elements in order (z-index by array position)
+      if (Array.isArray(spec.elements)) {
+        for (const el of spec.elements) {
+          try {
+            renderElement(canvas, el, scale);
+          } catch {
+            // Skip elements that fail to render
+          }
+        }
+      }
+
+      canvas.renderAll();
+      setHasError(false);
+    } catch (err) {
+      console.error("TemplatePreview render error:", err);
+      setHasError(true);
+    }
+
+    return () => {
+      try {
+        if (fabricRef.current) {
+          fabricRef.current.dispose();
+          fabricRef.current = null;
+        }
+      } catch {
+        fabricRef.current = null;
+      }
     };
   }, [designSpec]);
+
+  if (hasError) {
+    return (
+      <div className={`flex items-center justify-center bg-muted text-muted-foreground text-xs p-4 ${className || ""}`}>
+        <p>Preview unavailable</p>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex items-center justify-center bg-muted overflow-hidden ${className || ""}`}>
       <canvas ref={canvasRef} style={{ maxWidth: "100%", maxHeight: "100%" }} />
     </div>
   );
+}
+
+function hexToRgb(hex: string): string {
+  // Convert #RRGGBB to rgb(r, g, b) for Fabric.js gradient colorStops
+  if (!hex || !hex.startsWith("#")) return hex || "rgb(0,0,0)";
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.substring(0, 2), 16) || 0;
+  const g = parseInt(clean.substring(2, 4), 16) || 0;
+  const b = parseInt(clean.substring(4, 6), 16) || 0;
+  return `rgb(${r},${g},${b})`;
 }
 
 function applyBackground(
@@ -96,34 +129,31 @@ function applyBackground(
       return;
     }
 
-    // Create a full-canvas rectangle with gradient
-    const gradientConfig: any = {
-      colorStops: {} as Record<string, string>,
-    };
+    // Fabric.js 6 expects colorStops as an ARRAY of { color (rgb string), offset, opacity }
+    const colorStops = stops.map((s: any) => ({
+      color: hexToRgb(s.color),
+      offset: typeof s.offset === "number" ? s.offset : 0,
+      opacity: 1,
+    }));
 
-    for (const stop of stops) {
-      gradientConfig.colorStops[String(stop.offset)] = stop.color;
-    }
+    let coords: any;
 
     if (grad.type === "linear") {
       const angle = (grad.angle || 0) * (Math.PI / 180);
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
-
-      // Calculate gradient coordinates based on angle
       const halfW = width / 2;
       const halfH = height / 2;
 
-      gradientConfig.type = "linear";
-      gradientConfig.coords = {
+      coords = {
         x1: halfW - cos * halfW,
         y1: halfH - sin * halfH,
         x2: halfW + cos * halfW,
         y2: halfH + sin * halfH,
       };
-    } else if (grad.type === "radial") {
-      gradientConfig.type = "radial";
-      gradientConfig.coords = {
+    } else {
+      // radial
+      coords = {
         x1: width / 2,
         y1: height / 2,
         r1: 0,
@@ -133,22 +163,36 @@ function applyBackground(
       };
     }
 
-    const bgRect = new fabric.Rect({
-      left: 0,
-      top: 0,
-      width,
-      height,
-      selectable: false,
-      evented: false,
-    });
-
     try {
-      const gradient = new fabric.Gradient(gradientConfig);
+      const bgRect = new fabric.Rect({
+        left: 0,
+        top: 0,
+        width,
+        height,
+        selectable: false,
+        evented: false,
+      });
+
+      let gradient: any;
+      if (grad.type === "radial") {
+        gradient = new fabric.Gradient<"radial">({
+          type: "radial",
+          coords: coords as { x1: number; y1: number; r1: number; x2: number; y2: number; r2: number },
+          colorStops,
+        });
+      } else {
+        gradient = new fabric.Gradient<"linear">({
+          type: "linear",
+          coords: coords as { x1: number; y1: number; x2: number; y2: number },
+          colorStops,
+        });
+      }
+
       bgRect.fill = gradient;
       canvas.add(bgRect);
       canvas.sendObjectToBack(bgRect);
     } catch {
-      // Fallback: use first stop color
+      // Fallback to solid color
       canvas.backgroundColor = stops[0]?.color || "#FFFFFF";
     }
   } else {
@@ -157,12 +201,14 @@ function applyBackground(
 }
 
 function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
+  if (!el || !el.type) return;
+
   const left = (el.position?.x || 0) * scale;
   const top = (el.position?.y || 0) * scale;
-  const width = (el.size?.width || 100) * scale;
-  const height = (el.size?.height || 100) * scale;
-  const opacity = el.opacity !== undefined ? el.opacity : 1;
-  const rotation = el.rotation || 0;
+  const width = Math.max((el.size?.width || 100) * scale, 1);
+  const height = Math.max((el.size?.height || 100) * scale, 1);
+  const opacity = el.opacity !== undefined && el.opacity !== null ? Number(el.opacity) : 1;
+  const rotation = el.rotation ? Number(el.rotation) : 0;
 
   if (el.type === "shape") {
     let obj: fabric.FabricObject | null = null;
@@ -187,7 +233,7 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
         angle: rotation,
       });
     } else if (el.shape === "circle") {
-      const radius = Math.min(width, height) / 2;
+      const radius = Math.max(Math.min(width, height) / 2, 1);
       obj = new fabric.Circle({
         left,
         top,
@@ -204,8 +250,8 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
       obj = new fabric.Ellipse({
         left,
         top,
-        rx: width / 2,
-        ry: height / 2,
+        rx: Math.max(width / 2, 1),
+        ry: Math.max(height / 2, 1),
         fill,
         stroke,
         strokeWidth,
@@ -229,10 +275,11 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
         angle: rotation,
       });
     } else if (el.shape === "line") {
-      const points: [number, number, number, number] = [left, top, left + width, top + height];
-      obj = new fabric.Line(points, {
-        stroke: stroke || fill,
-        strokeWidth: strokeWidth || 1 * scale,
+      obj = new fabric.Line([0, 0, width, height], {
+        left,
+        top,
+        stroke: stroke || fill || "#000000",
+        strokeWidth: Math.max(strokeWidth, 1 * scale),
         selectable: false,
         evented: false,
         opacity,
@@ -242,13 +289,17 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
 
     // Apply shadow if defined
     if (obj && el.style?.shadow) {
-      const s = el.style.shadow;
-      obj.shadow = new fabric.Shadow({
-        color: s.color || "rgba(0,0,0,0.3)",
-        offsetX: (s.offsetX || 0) * scale,
-        offsetY: (s.offsetY || 0) * scale,
-        blur: (s.blur || 0) * scale,
-      });
+      try {
+        const s = el.style.shadow;
+        obj.shadow = new fabric.Shadow({
+          color: s.color || "rgba(0,0,0,0.3)",
+          offsetX: (s.offsetX || 0) * scale,
+          offsetY: (s.offsetY || 0) * scale,
+          blur: (s.blur || 0) * scale,
+        });
+      } catch {
+        // skip shadow
+      }
     }
 
     if (obj) {
@@ -256,7 +307,7 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
     }
   } else if (el.type === "text") {
     const fontSize = Math.max((el.style?.fontSize || 24) * scale, 3);
-    let textContent = el.content || "";
+    let textContent = el.content || " ";
 
     // Apply text transform
     if (el.style?.textTransform === "uppercase") {
@@ -267,10 +318,15 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
       textContent = textContent.replace(/\b\w/g, (c: string) => c.toUpperCase());
     }
 
-    const textObj = new fabric.Textbox(textContent, {
+    // Ensure textContent is not empty (fabric crashes on empty strings in some cases)
+    if (!textContent || textContent.trim() === "") {
+      textContent = " ";
+    }
+
+    const textOpts: any = {
       left,
       top,
-      width,
+      width: Math.max(width, 10),
       fontSize,
       fontFamily: el.style?.fontFamily || "Arial",
       fontWeight: el.style?.fontWeight || "normal",
@@ -278,12 +334,13 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
       fill: el.style?.color || "#000000",
       textAlign: el.style?.textAlign || "left",
       lineHeight: el.style?.lineHeight || 1.2,
-      letterSpacing: el.style?.letterSpacing ? el.style.letterSpacing * scale : undefined,
       selectable: false,
       evented: false,
       opacity,
       angle: rotation,
-    });
+    };
+
+    const textObj = new fabric.Textbox(textContent, textOpts);
 
     // Apply text decoration
     if (el.style?.textDecoration === "underline") {
@@ -294,18 +351,21 @@ function renderElement(canvas: fabric.Canvas, el: any, scale: number) {
 
     // Apply shadow if defined
     if (el.style?.shadow) {
-      const s = el.style.shadow;
-      textObj.shadow = new fabric.Shadow({
-        color: s.color || "rgba(0,0,0,0.3)",
-        offsetX: (s.offsetX || 0) * scale,
-        offsetY: (s.offsetY || 0) * scale,
-        blur: (s.blur || 0) * scale,
-      });
+      try {
+        const s = el.style.shadow;
+        textObj.shadow = new fabric.Shadow({
+          color: s.color || "rgba(0,0,0,0.3)",
+          offsetX: (s.offsetX || 0) * scale,
+          offsetY: (s.offsetY || 0) * scale,
+          blur: (s.blur || 0) * scale,
+        });
+      } catch {
+        // skip shadow
+      }
     }
 
     canvas.add(textObj);
   } else if (el.type === "group" && Array.isArray(el.children)) {
-    // Render group children with offset
     for (const child of el.children) {
       try {
         const offsetChild = {
