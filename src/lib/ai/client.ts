@@ -26,24 +26,42 @@ export async function callClaude(
   return "";
 }
 
-export async function callClaudeWithImages(
+export interface FileAttachment {
+  mediaType: string;
+  data: string;
+}
+
+export async function callClaudeWithFiles(
   systemPrompt: string,
   userPrompt: string,
-  images: { mediaType: string; data: string }[],
+  files: FileAttachment[],
   maxTokens = 4096
 ): Promise<string> {
   const client = getClient();
 
-  const content: Anthropic.MessageCreateParams["messages"][0]["content"] = [];
-  for (const img of images) {
-    content.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-        data: img.data,
-      },
-    });
+  const content: any[] = [];
+  for (const file of files) {
+    if (file.mediaType === "application/pdf") {
+      // PDF as document type
+      content.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: file.data,
+        },
+      });
+    } else if (file.mediaType.startsWith("image/")) {
+      // Images
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: file.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: file.data,
+        },
+      });
+    }
   }
   content.push({ type: "text", text: userPrompt });
 
@@ -58,3 +76,6 @@ export async function callClaudeWithImages(
   if (block.type === "text") return block.text;
   return "";
 }
+
+// Keep old name for backward compatibility
+export const callClaudeWithImages = callClaudeWithFiles;

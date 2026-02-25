@@ -40,7 +40,11 @@ export async function POST(req: NextRequest) {
     for (const asset of assets) {
       assetDescriptions.push(`- ${asset.filename} (${asset.contentType})`);
 
-      if (asset.fileData && asset.contentType.startsWith("image/")) {
+      // Accept images AND PDFs for Claude analysis
+      const isImage = asset.contentType.startsWith("image/");
+      const isPdf = asset.contentType === "application/pdf";
+
+      if (asset.fileData && (isImage || isPdf)) {
         images.push({
           mediaType: asset.contentType,
           data: asset.fileData,
