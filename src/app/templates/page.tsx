@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 import { api } from "@/lib/api";
 import type { PieceType } from "@/lib/design-spec.types";
+import { TemplatePreview } from "@/components/templates/TemplatePreview";
 
 const PIECE_TYPES: { value: PieceType; label: string }[] = [
   { value: "instagram_post", label: "Instagram Post" },
@@ -157,12 +158,19 @@ export default function TemplatesPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {templates.map((t) => (
             <Card key={t.id} className="overflow-hidden">
-              <div className="aspect-square bg-muted flex items-center justify-center text-xs text-muted-foreground p-4">
-                <div className="text-center">
-                  <p className="font-medium">{t.piece_type}</p>
-                  <p>{t.variation_style}</p>
+              {t.design_spec ? (
+                <TemplatePreview
+                  designSpec={t.design_spec}
+                  className="aspect-square"
+                />
+              ) : (
+                <div className="aspect-square bg-muted flex items-center justify-center text-xs text-muted-foreground p-4">
+                  <div className="text-center">
+                    <p className="font-medium">{t.piece_type}</p>
+                    <p>{t.variation_style}</p>
+                  </div>
                 </div>
-              </div>
+              )}
               <CardContent className="p-3">
                 <p className="truncate text-sm font-medium">
                   {t.name || t.piece_type}
