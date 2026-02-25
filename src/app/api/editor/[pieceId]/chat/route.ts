@@ -8,7 +8,7 @@ import {
 } from "@/lib/ai/prompts";
 import { extractJsonFromResponse, validateDesignEditResponse } from "@/lib/ai/validators";
 
-export const maxDuration = 120; // Allow up to 2 min for rate limit retries
+export const maxDuration = 60; // Vercel hobby plan max
 
 export async function POST(
   req: NextRequest,

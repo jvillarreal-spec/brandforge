@@ -15,10 +15,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 // Retry wrapper for rate limit errors (429)
+// Keeps retries short to fit within Vercel's function timeout (60s)
 async function withRetry<T>(
   fn: () => Promise<T>,
-  maxRetries = 3,
-  baseDelayMs = 15000 // 15 seconds base delay for rate limits
+  maxRetries = 2,
+  baseDelayMs = 5000 // 5 seconds base delay
 ): Promise<T> {
   let lastError: any;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -29,16 +30,22 @@ async function withRetry<T>(
       const status = err?.status || err?.statusCode || 0;
       const message = err?.message || "";
 
-      // Only retry on rate limit (429) or server errors (500, 502, 503)
-      const isRetryable = status === 429 || status >= 500 || message.includes("rate_limit");
+      // Only retry on rate limit (429) or overloaded (529) or server errors (500+)
+      const isRetryable = status === 429 || status === 529 || status >= 500 || message.includes("rate_limit");
 
       if (!isRetryable || attempt === maxRetries) {
+        // Make the error message user-friendly for rate limits
+        if (status === 429 || message.includes("rate_limit")) {
+          const friendlyErr = new Error("Rate limit alcanzado. Espera 1 minuto e intenta de nuevo.");
+          (friendlyErr as any).status = 429;
+          throw friendlyErr;
+        }
         throw err;
       }
 
-      // Exponential backoff: 15s, 30s, 60s
+      // Backoff: 5s, 10s
       const delay = baseDelayMs * Math.pow(2, attempt);
-      console.log(`[ai-client] Rate limited (attempt ${attempt + 1}/${maxRetries + 1}). Waiting ${delay / 1000}s before retry...`);
+      console.log(`[ai-client] Rate limited (attempt ${attempt + 1}/${maxRetries + 1}). Waiting ${delay / 1000}s...`);
       await sleep(delay);
     }
   }

@@ -92,11 +92,21 @@ export default function EditorPage() {
         ]);
         await fetchHistory();
       } catch (err: any) {
+        const errMsg = err.message || "Failed to apply changes";
+        let userMessage = errMsg;
+
+        // Friendly messages for common errors
+        if (errMsg.includes("Failed to fetch") || errMsg.includes("timeout") || errMsg.includes("NetworkError")) {
+          userMessage = "⏱️ La solicitud tardó demasiado. La API de IA puede estar saturada. Espera 1 minuto e intenta de nuevo.";
+        } else if (errMsg.includes("rate_limit") || errMsg.includes("429") || errMsg.includes("Rate limit")) {
+          userMessage = "⏳ Límite de uso alcanzado. Espera 1 minuto antes de enviar otro mensaje.";
+        }
+
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: `Error: ${err.message || "Failed to apply changes"}`,
+            content: userMessage,
           },
         ]);
       } finally {
