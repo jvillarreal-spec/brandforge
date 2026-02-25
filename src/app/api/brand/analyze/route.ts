@@ -5,6 +5,9 @@ import { callClaudeWithImages } from "@/lib/ai/client";
 import { BRAND_ANALYSIS_SYSTEM_PROMPT, buildBrandAnalysisUserPrompt } from "@/lib/ai/prompts";
 import { extractJsonFromResponse } from "@/lib/ai/validators";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const accountId = getAccountIdFromRequest(req);
@@ -21,7 +24,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fetch assets
+    // Fetch assets with file data
     const assets = await prisma.brandAsset.findMany({
       where: { id: { in: asset_ids }, accountId },
     });
@@ -30,28 +33,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ detail: "No assets found" }, { status: 404 });
     }
 
-    // Build descriptions for the AI prompt
-    const assetDescriptions = assets
-      .map((a) => `- ${a.filename} (${a.contentType})`)
-      .join("\n");
-
-    // For now, we send the descriptions since we don't have S3 configured
-    // When S3 is configured, we would download and base64 encode images
+    // Build image array from stored base64 data
     const images: { mediaType: string; data: string }[] = [];
+    const assetDescriptions: string[] = [];
+
+    for (const asset of assets) {
+      assetDescriptions.push(`- ${asset.filename} (${asset.contentType})`);
+
+      if (asset.fileData && asset.contentType.startsWith("image/")) {
+        images.push({
+          mediaType: asset.contentType,
+          data: asset.fileData,
+        });
+      }
+    }
 
     let analysis;
-    if (images.length > 0) {
-      const userPrompt = buildBrandAnalysisUserPrompt(assetDescriptions, company_url);
-      const response = await callClaudeWithImages(
-        BRAND_ANALYSIS_SYSTEM_PROMPT,
-        userPrompt,
-        images
+    const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+
+    if (hasApiKey && images.length > 0) {
+      // Use Claude Vision to analyze images
+      const userPrompt = buildBrandAnalysisUserPrompt(
+        assetDescriptions.join("\n"),
+        company_url
       );
-      analysis = extractJsonFromResponse(response);
-    } else {
-      // Fallback: generate default brand profile based on company name
+
+      try {
+        const response = await callClaudeWithImages(
+          BRAND_ANALYSIS_SYSTEM_PROMPT,
+          userPrompt,
+          images
+        );
+        analysis = extractJsonFromResponse(response);
+      } catch (aiErr: any) {
+        console.error("AI analysis failed, using fallback:", aiErr.message);
+        analysis = null;
+      }
+    }
+
+    // Fallback if no API key or AI failed
+    if (!analysis) {
+      const brandName = company_url
+        ? new URL(company_url.startsWith("http") ? company_url : `https://${company_url}`).hostname
+            .replace("www.", "")
+            .split(".")[0]
+            .replace(/-/g, " ")
+            .replace(/\b\w/g, (c: string) => c.toUpperCase())
+        : "My Brand";
+
       analysis = {
-        name: company_url || "My Brand",
+        name: brandName,
         colors: {
           primary: "#2563EB",
           secondary: "#1E40AF",
@@ -117,6 +148,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
+    console.error("Analyze error:", err);
     return NextResponse.json(
       { detail: err.message || "Analysis failed" },
       { status: 500 }

@@ -48,6 +48,7 @@ model BrandAsset {
   contentType String   @map("content_type")
   fileSize    Int      @map("file_size")
   assetType   String   @map("asset_type")
+  fileData    String?  @map("file_data") @db.Text
   createdAt   DateTime @default(now()) @map("created_at")
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)

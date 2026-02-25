@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
 
     for (const file of files) {
       const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      const base64Data = buffer.toString("base64");
       const contentType = file.type || "application/octet-stream";
 
       const s3Key = `brand_${accountId}/assets/${Date.now()}_${file.name}`;
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest) {
           contentType,
           fileSize: bytes.byteLength,
           assetType: detectAssetType(contentType),
+          fileData: base64Data,
         },
       });
 
