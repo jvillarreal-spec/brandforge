@@ -45,15 +45,28 @@ export async function POST(req: NextRequest) {
       const isPdf = asset.contentType === "application/pdf";
 
       if (asset.fileData && (isImage || isPdf)) {
+        // Log data size for debugging
+        const dataSizeKb = Math.round(asset.fileData.length * 0.75 / 1024);
+        console.log(`[analyze] Asset: ${asset.filename}, type: ${asset.contentType}, size: ${dataSizeKb}KB`);
+
         images.push({
           mediaType: asset.contentType,
           data: asset.fileData,
         });
+      } else {
+        console.log(`[analyze] Skipping asset: ${asset.filename}, contentType: ${asset.contentType}, hasFileData: ${!!asset.fileData}`);
       }
     }
 
-    let analysis;
+    console.log(`[analyze] Total assets: ${assets.length}, images for Claude: ${images.length}, company_url: ${company_url || "none"}`);
+
+    let analysis = null;
+    let aiError = null;
     const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+
+    if (!hasApiKey) {
+      console.log("[analyze] WARNING: No ANTHROPIC_API_KEY found in environment");
+    }
 
     if (hasApiKey && images.length > 0) {
       // Use Claude Vision to analyze images
@@ -62,21 +75,47 @@ export async function POST(req: NextRequest) {
         company_url
       );
 
+      console.log(`[analyze] Calling Claude with ${images.length} files...`);
+
       try {
         const response = await callClaudeWithImages(
           BRAND_ANALYSIS_SYSTEM_PROMPT,
           userPrompt,
           images
         );
+        console.log(`[analyze] Claude response received (${response.length} chars)`);
+        console.log(`[analyze] Response preview: ${response.substring(0, 200)}...`);
+
         analysis = extractJsonFromResponse(response);
+        console.log(`[analyze] Extracted brand name: ${analysis?.name}, primary color: ${analysis?.colors?.primary}`);
       } catch (aiErr: any) {
-        console.error("AI analysis failed, using fallback:", aiErr.message);
-        analysis = null;
+        aiError = aiErr.message || "Unknown AI error";
+        console.error("[analyze] AI analysis failed:", aiError);
+
+        // If it's a size issue, try with just the first image
+        if (images.length > 1 && (aiError.includes("too large") || aiError.includes("size") || aiError.includes("token"))) {
+          console.log("[analyze] Retrying with just the first image...");
+          try {
+            const retryResponse = await callClaudeWithImages(
+              BRAND_ANALYSIS_SYSTEM_PROMPT,
+              userPrompt,
+              [images[0]]
+            );
+            analysis = extractJsonFromResponse(retryResponse);
+            aiError = null;
+            console.log(`[analyze] Retry succeeded! Brand name: ${analysis?.name}`);
+          } catch (retryErr: any) {
+            console.error("[analyze] Retry also failed:", retryErr.message);
+            aiError = retryErr.message;
+          }
+        }
       }
     }
 
     // Fallback if no API key or AI failed
     if (!analysis) {
+      console.log(`[analyze] Using FALLBACK analysis. Reason: ${!hasApiKey ? "No API key" : images.length === 0 ? "No valid images" : `AI error: ${aiError}`}`);
+
       const brandName = company_url
         ? new URL(company_url.startsWith("http") ? company_url : `https://${company_url}`).hostname
             .replace("www.", "")
@@ -139,6 +178,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Include whether fallback was used in response for debugging
     return NextResponse.json({
       brand_profile: {
         id: profile.id,
@@ -150,9 +190,15 @@ export async function POST(req: NextRequest) {
         logos: profile.logos,
         status: profile.status,
       },
+      _debug: {
+        usedAI: !aiError && hasApiKey && images.length > 0,
+        imageCount: images.length,
+        aiError: aiError || null,
+        hasApiKey,
+      },
     });
   } catch (err: any) {
-    console.error("Analyze error:", err);
+    console.error("[analyze] FATAL error:", err);
     return NextResponse.json(
       { detail: err.message || "Analysis failed" },
       { status: 500 }

@@ -41,11 +41,19 @@ export default function BrandOnboardingPage() {
         token
       );
 
-      const analyzeRes = await api.post<{ brand_profile: any }>(
+      const analyzeRes = await api.post<{ brand_profile: any; _debug?: any }>(
         "/api/brand/analyze",
-        { asset_ids: uploadRes.asset_ids },
+        { asset_ids: uploadRes.asset_ids, company_url: url || undefined },
         token
       );
+
+      // Log debug info to console
+      if (analyzeRes._debug) {
+        console.log("[Brand Analysis Debug]", analyzeRes._debug);
+        if (!analyzeRes._debug.usedAI) {
+          console.warn("AI analysis was NOT used. Reason:", analyzeRes._debug.aiError || "No API key or no images");
+        }
+      }
 
       setProfile(analyzeRes.brand_profile);
       setStep("review");
