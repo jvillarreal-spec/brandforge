@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountIdFromRequest } from "@/lib/auth-helpers";
 
+// Allow larger file uploads (up to 10MB)
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 function detectAssetType(contentType: string): string {
   if (contentType.startsWith("image/")) return "image";
   if (contentType.includes("pdf")) return "pdf";
@@ -16,7 +20,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
     }
 
-    const formData = await req.formData();
+    let formData;
+    try {
+      formData = await req.formData();
+    } catch (formErr: any) {
+      return NextResponse.json(
+        { detail: "Failed to parse form data: " + formErr.message },
+        { status: 400 }
+      );
+    }
+
     const files = formData.getAll("files") as File[];
 
     if (!files || files.length === 0) {
@@ -32,7 +45,6 @@ export async function POST(req: NextRequest) {
       const bytes = await file.arrayBuffer();
       const contentType = file.type || "application/octet-stream";
 
-      // Store file reference in DB (S3 upload would happen here when configured)
       const s3Key = `brand_${accountId}/assets/${Date.now()}_${file.name}`;
 
       const asset = await prisma.brandAsset.create({
@@ -54,6 +66,7 @@ export async function POST(req: NextRequest) {
       message: `Successfully uploaded ${assetIds.length} file(s)`,
     });
   } catch (err: any) {
+    console.error("Upload error:", err);
     return NextResponse.json(
       { detail: err.message || "Upload failed" },
       { status: 500 }
