@@ -8,6 +8,8 @@ import {
 } from "@/lib/ai/prompts";
 import { extractJsonFromResponse, validateDesignEditResponse } from "@/lib/ai/validators";
 
+export const maxDuration = 120; // Allow up to 2 min for rate limit retries
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ pieceId: string }> }
@@ -40,7 +42,7 @@ export async function POST(
       );
     }
 
-    // Fetch brand profile
+    // Fetch brand profile — send only essential fields to reduce tokens
     const profile = await prisma.brandProfile.findUnique({
       where: { accountId },
     });
@@ -50,32 +52,32 @@ export async function POST(
           name: profile.name,
           colors: profile.colors,
           typography: profile.typography,
-          style: profile.style,
         }
       : {};
 
-    // Fetch last 10 edits for chat history
+    // Fetch last 5 edits for chat history (reduced from 10 to save tokens)
     const historyEntries = await prisma.editHistory.findMany({
       where: { designPieceId: pieceId },
       orderBy: { createdAt: "desc" },
-      take: 10,
+      take: 5,
     });
 
-    const chatHistory = historyEntries
-      .reverse()
-      .map(
-        (h) => `User: ${h.userMessage}\nAssistant: ${h.aiExplanation}`
-      )
-      .join("\n\n");
+    // Compact chat history format to save tokens
+    const chatHistory = historyEntries.length > 0
+      ? historyEntries
+          .reverse()
+          .map((h) => `User: ${h.userMessage}\nAI: ${h.aiExplanation}`)
+          .join("\n")
+      : "No previous edits.";
 
     // Save the current spec before edit
     const specBefore = JSON.parse(JSON.stringify(piece.designSpec));
 
-    // Call Claude to edit design
+    // Use compact JSON (no pretty-print) to significantly reduce token count
     const userPrompt = buildDesignEditingUserPrompt(
-      JSON.stringify(piece.designSpec, null, 2),
-      JSON.stringify(brandData, null, 2),
-      chatHistory || "No previous chat history.",
+      JSON.stringify(piece.designSpec),    // compact — saves ~40% tokens vs pretty
+      JSON.stringify(brandData),           // compact
+      chatHistory,
       message
     );
 
@@ -129,8 +131,18 @@ export async function POST(
       explanation: editResult.explanation,
     });
   } catch (err: any) {
+    const errMsg = err?.message || "Chat edit failed";
+
+    // Provide a user-friendly message for rate limits
+    if (errMsg.includes("rate_limit") || errMsg.includes("429")) {
+      return NextResponse.json(
+        { detail: "La API está temporalmente saturada. Por favor espera 30 segundos e intenta de nuevo." },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
-      { detail: err.message || "Chat edit failed" },
+      { detail: errMsg },
       { status: 500 }
     );
   }
