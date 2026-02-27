@@ -157,11 +157,11 @@ export default function EditorPage() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <DesignCanvas spec={spec} onCanvasReady={setCanvas} />
         </div>
 
-        <div className="w-96">
+        <div className="w-96 shrink-0">
           <Tabs defaultValue="chat" className="flex h-full flex-col">
             <TabsList className="mx-4 mt-2">
               <TabsTrigger value="chat">Chat</TabsTrigger>
