@@ -5,6 +5,14 @@ interface RequestOptions extends RequestInit {
   token?: string;
 }
 
+function handleUnauthorized() {
+  // Clear expired token and redirect to login
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("token");
+    window.location.href = "/login";
+  }
+}
+
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { token, headers: customHeaders, ...rest } = options;
 
@@ -23,6 +31,12 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   });
 
   if (!response.ok) {
+    // Auto-redirect to login on 401 (expired/invalid token)
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new Error("Sesión expirada. Redirigiendo al login...");
+    }
+
     const error = await response.json().catch(() => ({ detail: "Request failed" }));
     throw new Error(error.detail || `HTTP ${response.status}`);
   }
@@ -54,6 +68,10 @@ export const api = {
       body: formData,
     });
     if (!response.ok) {
+      if (response.status === 401) {
+        handleUnauthorized();
+        throw new Error("Sesión expirada. Redirigiendo al login...");
+      }
       const error = await response.json().catch(() => ({ detail: "Upload failed" }));
       throw new Error(error.detail || `HTTP ${response.status}`);
     }

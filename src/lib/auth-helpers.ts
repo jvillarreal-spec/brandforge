@@ -13,7 +13,7 @@ export function verifyPassword(plain: string, hashed: string): boolean {
 }
 
 export function createToken(accountId: string): string {
-  return jwt.sign({ sub: accountId }, JWT_SECRET, { expiresIn: "24h" });
+  return jwt.sign({ sub: accountId }, JWT_SECRET, { expiresIn: "7d" });
 }
 
 export function verifyToken(token: string): { sub: string } | null {
