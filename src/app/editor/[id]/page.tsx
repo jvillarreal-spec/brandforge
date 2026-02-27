@@ -147,7 +147,7 @@ export default function EditorPage() {
     <div className="flex h-[calc(100vh-7rem)] flex-col">
       <div className="flex items-center justify-between border-b px-4 py-2">
         <h2 className="text-lg font-semibold">{templateName}</h2>
-        <ExportToolbar canvas={canvas} pieceId={pieceId} />
+        <ExportToolbar canvas={canvas} pieceId={pieceId} spec={spec} />
       </div>
 
       {error && (

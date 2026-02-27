@@ -4,14 +4,17 @@ import { useState } from "react";
 import * as fabric from "fabric";
 import { Button } from "@/components/ui/button";
 import { exportCanvasToImage } from "@/lib/fabric-renderer";
-import { api } from "@/lib/api";
+import { designSpecToHtml } from "@/lib/export-html";
+import { designSpecToPptx } from "@/lib/export-pptx";
+import type { DesignSpec } from "@/lib/design-spec.types";
 
 interface ExportToolbarProps {
   canvas: fabric.Canvas | null;
   pieceId: string;
+  spec?: DesignSpec | null;
 }
 
-export function ExportToolbar({ canvas, pieceId }: ExportToolbarProps) {
+export function ExportToolbar({ canvas, pieceId, spec }: ExportToolbarProps) {
   const [exporting, setExporting] = useState("");
 
   const handlePngExport = () => {
@@ -40,56 +43,61 @@ export function ExportToolbar({ canvas, pieceId }: ExportToolbarProps) {
     link.click();
   };
 
-  const handleServerExport = async (format: "html" | "pptx") => {
-    setExporting(format);
+  const handleHtmlExport = () => {
+    if (!spec) return;
+    setExporting("html");
     try {
-      const token = localStorage.getItem("token") || "";
-      const res = await api.post<{ export_id: string; status: string }>(
-        `/api/export/${pieceId}`,
-        { format },
-        token
-      );
+      const html = designSpecToHtml(spec);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = `design-${pieceId}.html`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("HTML export failed:", err);
+    } finally {
+      setExporting("");
+    }
+  };
 
-      if (res.status === "completed") {
-        const statusRes = await api.get<{ download_url: string }>(
-          `/api/export/${res.export_id}/status`,
-          token
-        );
-        if (statusRes.download_url) {
-          window.open(statusRes.download_url, "_blank");
-        }
-      }
-    } catch (err: any) {
-      console.error("Export failed:", err.message);
+  const handlePptxExport = async () => {
+    if (!spec) return;
+    setExporting("pptx");
+    try {
+      await designSpecToPptx(spec, `design-${pieceId}.pptx`);
+    } catch (err) {
+      console.error("PPTX export failed:", err);
     } finally {
       setExporting("");
     }
   };
 
   return (
-    <div className="flex items-center gap-2 border-b px-4 py-2">
+    <div className="flex items-center gap-2">
       <span className="text-sm font-medium text-muted-foreground">Export:</span>
-      <Button size="sm" variant="outline" onClick={handlePngExport}>
+      <Button size="sm" variant="outline" onClick={handlePngExport} disabled={!canvas}>
         PNG
       </Button>
-      <Button size="sm" variant="outline" onClick={handleJpgExport}>
+      <Button size="sm" variant="outline" onClick={handleJpgExport} disabled={!canvas}>
         JPG
       </Button>
       <Button
         size="sm"
         variant="outline"
-        onClick={() => handleServerExport("html")}
-        disabled={exporting === "html"}
+        onClick={handleHtmlExport}
+        disabled={!spec || exporting === "html"}
       >
-        {exporting === "html" ? "Exporting..." : "HTML"}
+        {exporting === "html" ? "Exportando..." : "HTML"}
       </Button>
       <Button
         size="sm"
         variant="outline"
-        onClick={() => handleServerExport("pptx")}
-        disabled={exporting === "pptx"}
+        onClick={handlePptxExport}
+        disabled={!spec || exporting === "pptx"}
       >
-        {exporting === "pptx" ? "Exporting..." : "PPTX"}
+        {exporting === "pptx" ? "Exportando..." : "PPTX"}
       </Button>
     </div>
   );
